@@ -46,6 +46,3 @@ class DataInspector:
 def main():
     DataInspector()
     rospy.spin()
-
-if __name__ == '__main__':
-    main()
