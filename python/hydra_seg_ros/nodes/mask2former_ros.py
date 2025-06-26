@@ -131,7 +131,7 @@ class Mask2FormerRosNode:
                 panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
                 panoptic_map[mask_to_process] = panoptic_id
             
-        return {"panoptic map" : panoptic_map}
+        return {"panoptic_map" : panoptic_map}
 
     def vision_callback(
         self, cam_info_msg: CameraInfo, color_msg: Image, depth_msg: Image
