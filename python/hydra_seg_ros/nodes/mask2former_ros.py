@@ -38,6 +38,8 @@ class Mask2FormerRosNode:
         self.conf_threshold = rospy.get_param("~conf_threshold", 0.9)
         self.panoptic_id_multiplier = 1000 
 
+        self.thing_class_threshold = rospy.get_param("~thing_class_threshold", 80) 
+
         # --- LOAD THE ONNX MODEL ---
         rospy.loginfo(f"Loading ONNX model from: {self.model_path}")
         so = ort.SessionOptions()
