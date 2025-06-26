@@ -1,4 +1,3 @@
-# Standard Imports
 import message_filters
 import rospy
 from cv_bridge import CvBridge, CvBridgeError
@@ -6,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import cv2
 from scipy.special import softmax
+from scipy.ndimage import label
 
 import onnxruntime as ort
 
@@ -36,6 +36,7 @@ class Mask2FormerRosNode:
             "~custom_op_path", "models/mask2former/libmmdeploy_onnxruntime_ops.so"
         )
         self.conf_threshold = rospy.get_param("~conf_threshold", 0.9)
+        self.panoptic_id_multiplier = 1000 
 
         # --- LOAD THE ONNX MODEL ---
         rospy.loginfo(f"Loading ONNX model from: {self.model_path}")
@@ -102,12 +103,33 @@ class Mask2FormerRosNode:
             full_res_masks[i] = mask > 0
 
         sorted_indices = np.argsort(scores)[::-1]
-        panoptic_map = np.zeros(original_image_shape, dtype=np.uint16)
+        panoptic_map = np.zeros(original_image_shape, dtype=np.uint32)
         
+        instance_counters = {}
+
         for i in sorted_indices:
-            panoptic_map[full_res_masks[i]] = class_ids[i] + 1
+            semantic_id = class_ids[i]
+            mask = full_res_masks[i]
+            unassigned_pixels = (panoptic_map == 0)
+            mask_to_process = mask & unassigned_pixels
             
-        return {"panoptic_map": panoptic_map}
+            if np.sum(mask_to_process) == 0:
+                continue
+
+            if semantic_id < self.thing_class_threshold: # This is a "Thing"
+                # Find disconnected blobs. Each blob is a unique instance.
+                labeled_blobs, num_blobs = label(mask_to_process)
+                for j in range(1, num_blobs + 1):
+                    instance_mask = (labeled_blobs == j)
+                    instance_id = instance_counters.get(semantic_id, 0)
+                    instance_counters[semantic_id] = instance_id + 1
+                    panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier + instance_id
+                    panoptic_map[instance_mask] = panoptic_id
+            else: # This is "Stuff"
+                panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
+                panoptic_map[mask_to_process] = panoptic_id
+            
+        return {"panoptic map" : panoptic_map}
 
     def vision_callback(
         self, cam_info_msg: CameraInfo, color_msg: Image, depth_msg: Image
@@ -137,7 +159,7 @@ class Mask2FormerRosNode:
         # --- 5. Prepare and Publish ROS Message ---
         try:
 
-            panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="16UC1")
+            panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="32SC1")
             panoptic_label_msg.header = color_msg.header # Use same timestamp and frame
             
             empty_masks_msg = Masks()
