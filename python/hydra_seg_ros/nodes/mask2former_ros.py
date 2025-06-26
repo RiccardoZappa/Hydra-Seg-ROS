@@ -30,10 +30,10 @@ class Mask2FormerRosNode:
         # --- MODEL CONFIGURATION ---
         # Get parameters from the ROS Parameter Server
         self.model_path = rospy.get_param(
-            "~model_path", "/path/to/your/mask2former_panoptic_tiny.onnx"
+            "~model_path", "models/mask2former/mask2former_panoptic_tiny.onnx"
         )
         self.custom_op_path = rospy.get_param(
-            "~custom_op_path", "/path/to/your/libmmdeploy_onnxruntime_ops.so"
+            "~custom_op_path", "models/mask2former/libmmdeploy_onnxruntime_ops.so"
         )
         self.conf_threshold = rospy.get_param("~conf_threshold", 0.9)
 
