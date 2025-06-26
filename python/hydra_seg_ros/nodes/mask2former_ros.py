@@ -86,51 +86,118 @@ class Mask2FormerRosNode:
 
     def _extract_panoptic_data(self, class_logits, mask_logits, original_image_shape):
 
-        class_probs = softmax(class_logits, axis=-1)
+        # class_probs = softmax(class_logits, axis=-1)
+        # scores = np.max(class_probs, axis=-1)
+        # class_ids = np.argmax(class_probs, axis=-1)
+        
+        # confident_detections = scores > self.conf_threshold
+        
+        # if not np.any(confident_detections):
+        #     return {"panoptic_map": np.zeros(original_image_shape, dtype=np.int32)}
+
+        # scores = scores[confident_detections]
+        # class_ids = class_ids[confident_detections]
+        # mask_logits = mask_logits[confident_detections]
+
+        # full_res_masks = np.zeros((len(scores), original_image_shape[0], original_image_shape[1]), dtype=np.bool_)
+        # for i in range(len(scores)):
+        #     mask = cv2.resize(mask_logits[i], (original_image_shape[1], original_image_shape[0]), interpolation=cv2.INTER_LINEAR)
+        #     full_res_masks[i] = mask > 0
+
+        # sorted_indices = np.argsort(scores)[::-1]
+        # panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
+        
+        # instance_counters = {}
+
+        # for i in sorted_indices:
+        #     semantic_id = class_ids[i]
+        #     mask = full_res_masks[i]
+        #     unassigned_pixels = (panoptic_map == 0)
+        #     mask_to_process = mask & unassigned_pixels
+            
+        #     if np.sum(mask_to_process) == 0:
+        #         continue
+
+        #     if semantic_id < self.thing_class_threshold: # This is a "Thing"
+        #         # Find disconnected blobs. Each blob is a unique instance.
+        #         labeled_blobs, num_blobs = label(mask_to_process)
+        #         for j in range(1, num_blobs + 1):
+        #             instance_mask = (labeled_blobs == j)
+        #             instance_id = instance_counters.get(semantic_id, 0)
+        #             instance_counters[semantic_id] = instance_id + 1
+        #             panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier + instance_id
+        #             panoptic_map[instance_mask] = panoptic_id
+        #     else: # This is "Stuff"
+        #         panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
+        #         panoptic_map[mask_to_process] = panoptic_id
+        class_probs = softmax(cls_logits, axis=-1)
         scores = np.max(class_probs, axis=-1)
-        class_ids = np.argmax(class_probs, axis=-1)
+        semantic_ids = np.argmax(class_probs, axis=-1)
         
         confident_detections = scores > self.conf_threshold
-        
         if not np.any(confident_detections):
-            return {"panoptic_map": np.zeros(original_image_shape, dtype=np.int32)}
-
+            return np.zeros(original_image_shape, dtype=np.int32)
+    
+        # --- Step 1: Filter all queries by confidence and upsample their masks ---
         scores = scores[confident_detections]
-        class_ids = class_ids[confident_detections]
+        semantic_ids = semantic_ids[confident_detections]
         mask_logits = mask_logits[confident_detections]
-
-        full_res_masks = np.zeros((len(scores), original_image_shape[0], original_image_shape[1]), dtype=np.bool_)
+    
+        full_res_masks = np.zeros((len(scores), original_image_shape[0], original_image_shape[1]), dtype=bool)
         for i in range(len(scores)):
             mask = cv2.resize(mask_logits[i], (original_image_shape[1], original_image_shape[0]), interpolation=cv2.INTER_LINEAR)
             full_res_masks[i] = mask > 0
-
-        sorted_indices = np.argsort(scores)[::-1]
-        panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
         
+        # --- Step 2: Group all masks by their predicted semantic ID ---
+        masks_by_class = {}
+        for i in range(len(semantic_ids)):
+            sem_id = semantic_ids[i]
+            if sem_id not in masks_by_class:
+                masks_by_class[sem_id] = []
+            masks_by_class[sem_id].append({"mask": full_res_masks[i], "score": scores[i]})
+    
+        # --- Step 3: Process each class to create the final panoptic map ---
+        panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
         instance_counters = {}
-
-        for i in sorted_indices:
-            semantic_id = class_ids[i]
-            mask = full_res_masks[i]
-            unassigned_pixels = (panoptic_map == 0)
-            mask_to_process = mask & unassigned_pixels
+        
+        # We want to process classes with higher confidence first to resolve semantic overlaps
+        # We can approximate a class's score by the max score of its masks
+        class_scores = {sem_id: max(m["score"] for m in masks) for sem_id, masks in masks_by_class.items()}
+        sorted_class_ids = sorted(class_scores, key=class_scores.get, reverse=True)
+    
+        for sem_id in sorted_class_ids:
+            # Merge all masks for the current class into a single master mask
+            # The `reduce` function with `np.logical_or` is a clean way to do this
+            from functools import reduce
+            class_masks = [d["mask"] for d in masks_by_class[sem_id]]
+            merged_mask = reduce(np.logical_or, class_masks)
             
+            # Only consider pixels that have not been assigned to a higher-scoring class
+            mask_to_process = merged_mask & (panoptic_map == 0)
+    
             if np.sum(mask_to_process) == 0:
                 continue
-
-            if semantic_id < self.thing_class_threshold: # This is a "Thing"
-                # Find disconnected blobs. Each blob is a unique instance.
+            
+            # Check if it's a "thing" (needs instance IDs) or "stuff"
+            if sem_id < self.thing_class_threshold: # This is a "Thing"
+                # Find all disconnected blobs in the merged mask. Each blob is an instance.
                 labeled_blobs, num_blobs = label(mask_to_process)
+                
                 for j in range(1, num_blobs + 1):
                     instance_mask = (labeled_blobs == j)
-                    instance_id = instance_counters.get(semantic_id, 0)
-                    instance_counters[semantic_id] = instance_id + 1
-                    panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier + instance_id
+                    if np.sum(instance_mask) == 0:
+                        continue
+                    
+                    # Get a new, unique instance ID for this class
+                    instance_id = instance_counters.get(sem_id, 0)
+                    instance_counters[sem_id] = instance_id + 1
+                    
+                    panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier + instance_id
                     panoptic_map[instance_mask] = panoptic_id
             else: # This is "Stuff"
-                panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
+                panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier
                 panoptic_map[mask_to_process] = panoptic_id
-            
+                
         return {"panoptic_map" : panoptic_map}
 
     def vision_callback(
