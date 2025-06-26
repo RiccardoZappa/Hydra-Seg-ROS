@@ -93,7 +93,7 @@ class Mask2FormerRosNode:
         confident_detections = scores > self.conf_threshold
         
         if not np.any(confident_detections):
-            return {"panoptic_map": np.zeros(original_image_shape, dtype=np.uint16)}
+            return {"panoptic_map": np.zeros(original_image_shape, dtype=np.int32)}
 
         scores = scores[confident_detections]
         class_ids = class_ids[confident_detections]
@@ -105,7 +105,7 @@ class Mask2FormerRosNode:
             full_res_masks[i] = mask > 0
 
         sorted_indices = np.argsort(scores)[::-1]
-        panoptic_map = np.zeros(original_image_shape, dtype=np.uint32)
+        panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
         
         instance_counters = {}
 
