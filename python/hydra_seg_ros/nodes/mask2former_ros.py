@@ -46,7 +46,9 @@ class Mask2FormerRosNode:
         # Get model input/output details once
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [output.name for output in self.session.get_outputs()]
-        _, _, self.input_height, self.input_width = self.session.get_inputs()[0].shape
+        
+        self.input_height = 384
+        self.input_width = 384
         rospy.loginfo("Model loaded successfully.")
 
         # --- ROS SUBSCRIBERS ---
