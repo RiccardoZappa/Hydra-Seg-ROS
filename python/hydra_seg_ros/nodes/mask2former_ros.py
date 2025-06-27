@@ -87,52 +87,6 @@ class Mask2FormerRosNode:
 
     def _extract_panoptic_data(self, class_logits, mask_logits, original_image_shape):
 
-        # class_probs = softmax(class_logits, axis=-1)
-        # scores = np.max(class_probs, axis=-1)
-        # class_ids = np.argmax(class_probs, axis=-1)
-        
-        # confident_detections = scores > self.conf_threshold
-        
-        # if not np.any(confident_detections):
-        #     return {"panoptic_map": np.zeros(original_image_shape, dtype=np.int32)}
-
-        # scores = scores[confident_detections]
-        # class_ids = class_ids[confident_detections]
-        # mask_logits = mask_logits[confident_detections]
-
-        # full_res_masks = np.zeros((len(scores), original_image_shape[0], original_image_shape[1]), dtype=np.bool_)
-        # for i in range(len(scores)):
-        #     mask = cv2.resize(mask_logits[i], (original_image_shape[1], original_image_shape[0]), interpolation=cv2.INTER_LINEAR)
-        #     full_res_masks[i] = mask > 0
-
-        # sorted_indices = np.argsort(scores)[::-1]
-        # panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
-        
-        # instance_counters = {}
-
-        # for i in sorted_indices:
-        #     semantic_id = class_ids[i]
-        #     mask = full_res_masks[i]
-        #     unassigned_pixels = (panoptic_map == 0)
-        #     mask_to_process = mask & unassigned_pixels
-            
-        #     if np.sum(mask_to_process) == 0:
-        #         continue
-
-        #     if semantic_id < self.thing_class_threshold: # This is a "Thing"
-        #         # Find disconnected blobs. Each blob is a unique instance.
-        #         labeled_blobs, num_blobs = label(mask_to_process)
-        #         for j in range(1, num_blobs + 1):
-        #             instance_mask = (labeled_blobs == j)
-        #             instance_id = instance_counters.get(semantic_id, 0)
-        #             instance_counters[semantic_id] = instance_id + 1
-        #             panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier + instance_id
-        #             panoptic_map[instance_mask] = panoptic_id
-        #     else: # This is "Stuff"
-        #         panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
-        #         panoptic_map[mask_to_process] = panoptic_id
-# --- Step 1: Get all confident predictions and upsample their masks ---
-    # This part is the same as before.
         class_probs = softmax(class_logits, axis=-1)
         scores = np.max(class_probs, axis=-1)
         semantic_ids = np.argmax(class_probs, axis=-1)
