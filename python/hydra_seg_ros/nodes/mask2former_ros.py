@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from scipy.special import softmax
 from scipy.ndimage import label
+from functools import reduce
 
 import onnxruntime as ort
 
@@ -130,6 +131,8 @@ class Mask2FormerRosNode:
         #     else: # This is "Stuff"
         #         panoptic_id = (semantic_id + 1) * self.panoptic_id_multiplier
         #         panoptic_map[mask_to_process] = panoptic_id
+# --- Step 1: Get all confident predictions and upsample their masks ---
+    # This part is the same as before.
         class_probs = softmax(class_logits, axis=-1)
         scores = np.max(class_probs, axis=-1)
         semantic_ids = np.argmax(class_probs, axis=-1)
@@ -138,7 +141,6 @@ class Mask2FormerRosNode:
         if not np.any(confident_detections):
             return np.zeros(original_image_shape, dtype=np.int32)
 
-        # --- Step 1: Filter all queries by confidence and upsample their masks ---
         scores = scores[confident_detections]
         semantic_ids = semantic_ids[confident_detections]
         mask_logits = mask_logits[confident_detections]
@@ -148,56 +150,64 @@ class Mask2FormerRosNode:
             mask = cv2.resize(mask_logits[i], (original_image_shape[1], original_image_shape[0]), interpolation=cv2.INTER_LINEAR)
             full_res_masks[i] = mask > 0
 
-        # --- Step 2: Group all masks by their predicted semantic ID ---
+        # --- Step 2: Group masks by their predicted semantic ID ---
         masks_by_class = {}
         for i in range(len(semantic_ids)):
             sem_id = semantic_ids[i]
             if sem_id not in masks_by_class:
                 masks_by_class[sem_id] = []
-            masks_by_class[sem_id].append({"mask": full_res_masks[i], "score": scores[i]})
+            masks_by_class[sem_id].append(full_res_masks[i])
 
-        # --- Step 3: Process each class to create the final panoptic map ---
+        # --- Step 3: The Two-Pass Panoptic Map Generation ---
         panoptic_map = np.zeros(original_image_shape, dtype=np.int32)
         instance_counters = {}
 
-        # We want to process classes with higher confidence first to resolve semantic overlaps
-        # We can approximate a class's score by the max score of its masks
-        class_scores = {sem_id: max(m["score"] for m in masks) for sem_id, masks in masks_by_class.items()}
-        sorted_class_ids = sorted(class_scores, key=class_scores.get, reverse=True)
+        # --- PASS 1: Process all "THINGS" first ---
+        # We iterate through all classes the model detected
+        detected_semantic_ids = list(masks_by_class.keys())
 
-        for sem_id in sorted_class_ids:
-            # Merge all masks for the current class into a single master mask
-            # The `reduce` function with `np.logical_or` is a clean way to do this
-            from functools import reduce
-            class_masks = [d["mask"] for d in masks_by_class[sem_id]]
+        for sem_id in detected_semantic_ids:
+            if sem_id >= self.thing_class_threshold:
+                continue # Skip "stuff" classes for this pass
+
+            # Merge all masks for this "thing" class into one master mask
+            class_masks = masks_by_class[sem_id]
             merged_mask = reduce(np.logical_or, class_masks)
 
-            # Only consider pixels that have not been assigned to a higher-scoring class
-            mask_to_process = merged_mask & (panoptic_map == 0)
+            # Find all disconnected blobs in the merged mask. Each blob is a unique instance.
+            labeled_blobs, num_blobs = label(merged_mask)
 
-            if np.sum(mask_to_process) == 0:
-                continue
+            for j in range(1, num_blobs + 1):
+                instance_mask = (labeled_blobs == j)
 
-            # Check if it's a "thing" (needs instance IDs) or "stuff"
-            if sem_id < self.thing_class_threshold: # This is a "Thing"
-                # Find all disconnected blobs in the merged mask. Each blob is an instance.
-                labeled_blobs, num_blobs = label(mask_to_process)
+                # Get a new instance ID for this class
+                instance_id = instance_counters.get(sem_id, 0)
+                instance_counters[sem_id] = instance_id + 1
 
-                for j in range(1, num_blobs + 1):
-                    instance_mask = (labeled_blobs == j)
-                    if np.sum(instance_mask) == 0:
-                        continue
-                    
-                    # Get a new, unique instance ID for this class
-                    instance_id = instance_counters.get(sem_id, 0)
-                    instance_counters[sem_id] = instance_id + 1
+                # Calculate the full panoptic ID
+                panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier + instance_id
 
-                    panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier + instance_id
-                    panoptic_map[instance_mask] = panoptic_id
-            else: # This is "Stuff"
-                panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier
-                panoptic_map[mask_to_process] = panoptic_id
+                # Paint this instance onto the map
+                panoptic_map[instance_mask] = panoptic_id
 
+        # --- PASS 2: Process all "STUFF" to fill in the background ---
+        for sem_id in detected_semantic_ids:
+            if sem_id < self.thing_class_threshold:
+                continue # Skip "thing" classes, they are already done
+
+            # Merge all masks for this "stuff" class
+            class_masks = masks_by_class[sem_id]
+            merged_mask = reduce(np.logical_or, class_masks)
+
+            # IMPORTANT: Only paint on pixels that are still empty (value 0).
+            # This prevents stuff (like grass) from overwriting things (like a person).
+            unassigned_pixels = (panoptic_map == 0)
+            mask_to_paint = merged_mask & unassigned_pixels
+
+            # "Stuff" always has instance_id = 0
+            panoptic_id = (sem_id + 1) * self.panoptic_id_multiplier
+            panoptic_map[mask_to_paint] = panoptic_id
+        
         return {"panoptic_map" : panoptic_map}
 
     def vision_callback(
