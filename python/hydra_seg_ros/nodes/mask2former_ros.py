@@ -62,7 +62,7 @@ class Mask2FormerRosNode:
         self.depth_sub = message_filters.Subscriber("~depth", Image)
 
         # --- ROS PUBLISHERS ---
-        # This now publishes our machine-readable panoptic map for debugging in RViz
+        #publishes machine-readable panoptic map for debugging in RViz
         self.panoptic_label_pub = rospy.Publisher("~panoptic_label", Image, queue_size=10)
         # This publishes the full data packet for Hydra
         self.vision_packet_pub = rospy.Publisher(
@@ -117,7 +117,6 @@ class Mask2FormerRosNode:
         instance_counters = {}
 
         # --- PASS 1: Process all "THINGS" first ---
-        # We iterate through all classes the model detected
         detected_semantic_ids = list(masks_by_class.keys())
 
         for sem_id in detected_semantic_ids:
@@ -154,7 +153,6 @@ class Mask2FormerRosNode:
             merged_mask = reduce(np.logical_or, class_masks)
 
             # IMPORTANT: Only paint on pixels that are still empty (value 0).
-            # This prevents stuff (like grass) from overwriting things (like a person).
             unassigned_pixels = (panoptic_map == 0)
             mask_to_paint = merged_mask & unassigned_pixels
 
@@ -181,7 +179,7 @@ class Mask2FormerRosNode:
         
         # --- 3. Run Inference ---
         raw_results = self.session.run(self.output_names, {self.input_name: preprocessed_img})
-        # Assuming the first two outputs are class and mask logits.
+        #the first two outputs are class and mask logits.
         cls_logits = raw_results[0][0]
         mask_logits = raw_results[1][0]
         
