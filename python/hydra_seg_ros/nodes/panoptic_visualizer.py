@@ -6,7 +6,7 @@ from sensor_msgs.msg import Image
 
 # This is the same full COCO class dictionary. It's important to have a
 # consistent color mapping for your debugging.
-CCOCO_PANOPTIC_CLASSES = {
+COCO_PANOPTIC_CLASSES = {
     # --- "Things" - Objects with Instances ---
     0: 'person',
     1: 'bicycle',
