@@ -26,6 +26,16 @@ class Mask2FormerRosNode:
         rospy.init_node("mask2former_ros_node")
         self.init_ros()
         rospy.loginfo("Starting Mask2FormerRosNode.")
+        self.color_map = self.create_color_map()
+
+    def create_color_map(self):
+        # Creates a consistent color for every possible semantic class
+        np.random.seed(42)
+        num_classes = len(COCO_PANOPTIC_CLASSES)
+        # We make it large enough for any potential ID
+        color_map = np.random.randint(0, 255, size=(num_classes * 2, 3), dtype=np.uint8)
+        color_map[0] = [0, 0, 0] # Ensure background is black
+        return color_map
 
     def init_ros(self):
         # --- MODEL CONFIGURATION ---
@@ -190,7 +200,11 @@ class Mask2FormerRosNode:
         # --- 5. Prepare and Publish ROS Message ---
         try:
 
-            panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="32SC1")
+            semantic_map = (panoptic_map // self.panoptic_id_multiplier)
+
+            color_image = self.color_map[semantic_map]
+
+            panoptic_label_msg = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
             panoptic_label_msg.header = color_msg.header # Use same timestamp and frame
             
             empty_masks_msg = Masks()
