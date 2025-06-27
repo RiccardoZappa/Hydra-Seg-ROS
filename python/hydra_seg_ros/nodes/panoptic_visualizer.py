@@ -203,7 +203,7 @@ class PanopticVisualizer:
         try:
             # Convert the colorized NumPy array back to a ROS message with 'bgr8' encoding for RViz
             viz_msg = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
-            viz_msg.header = panoptic_msg.color_msg.header # Keep the same timestamp and frame
+            viz_msg.header = panoptic_label_msg.header # Keep the same timestamp and frame
             self.viz_pub.publish(viz_msg)
         except CvBridgeError as e:
             rospy.logerr(e)
