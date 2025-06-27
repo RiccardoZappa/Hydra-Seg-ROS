@@ -3,6 +3,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import numpy as np
 import cv2
 from sensor_msgs.msg import Image
+from hydra_msgs.msg import HydraVisionPacket
 
 # This is the same full COCO class dictionary. It's important to have a
 # consistent color mapping for your debugging.
@@ -158,9 +159,9 @@ class PanopticVisualizer:
         # --- Subscriber ---
         # Subscribes to the machine-readable panoptic map
         self.panoptic_sub = rospy.Subscriber(
-            "/mask2former_ros_node/panoptic_label", # This must match the publisher topic
-            Image, 
-            self.map_callback
+            "/mask2former_ros_node/vision_packet", # Adjust topic name as needed
+            HydraVisionPacket, 
+            self.packet_callback
         )
         
         # --- Publisher ---
@@ -178,10 +179,11 @@ class PanopticVisualizer:
         color_map[0] = [0, 0, 0] # Ensure background is black
         return color_map
 
-    def map_callback(self, panoptic_msg: Image):
+    def packet_callback(self, panoptic_msg: HydraVisionPacket):
         try:
+            panoptic_label_msg = panoptic_msg.label
             # Convert the incoming 32SC1 message to an int32 NumPy array
-            panoptic_map = self.bridge.imgmsg_to_cv2(panoptic_msg, desired_encoding="passthrough")
+            panoptic_map = self.bridge.imgmsg_to_cv2(panoptic_label_msg, desired_encoding="passthrough")
         except CvBridgeError as e:
             rospy.logerr(e)
             return
