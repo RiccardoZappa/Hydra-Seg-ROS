@@ -36,7 +36,7 @@ class Mask2FormerRosNode:
         self.custom_op_path = rospy.get_param(
             "~custom_op_path", "models/mask2former/libmmdeploy_onnxruntime_ops.so"
         )
-        self.conf_threshold = rospy.get_param("~conf_threshold", 0.9)
+        self.conf_threshold = rospy.get_param("~conf_threshold", 0.7)
         self.panoptic_id_multiplier = 1000 
 
         self.thing_class_threshold = rospy.get_param("~thing_class_threshold", 80) 
