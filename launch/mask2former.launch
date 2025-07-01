@@ -1,5 +1,8 @@
 <launch>
-
+  <arg name="model_path" doc="Absolute path to the .onnx model file"/>
+  <arg name="custom_op_path" doc="Absolute path to the libmmdeploy_onnxruntime_ops.so file"/>
+  <arg name="conf_threshold" default="0.9" doc="Confidence threshold for detections"/>
+  
   <arg name="camera_name" default="camera" />
   <arg name="color_topic" default="/$(arg camera_name)/color/image_raw"/>
   <arg name="depth_topic" default="/$(arg camera_name)/depth/image_raw"/>
