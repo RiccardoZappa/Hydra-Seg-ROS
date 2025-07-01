@@ -1,6 +1,6 @@
 <launch>
-  <arg name="model_path" doc="Absolute path to the .onnx model file"/>
-  <arg name="custom_op_path" doc="Absolute path to the libmmdeploy_onnxruntime_ops.so file"/>
+  <arg name="model_path" default="/home/ros/models/mask2former_panoptic_tiny.onnx"/>
+  <arg name="custom_op_path" default="/home/ros/models/libmmdeploy_onnxruntime_ops.so"/>
   <arg name="conf_threshold" default="0.9" doc="Confidence threshold for detections"/>
   
   <arg name="camera_name" default="camera" />
