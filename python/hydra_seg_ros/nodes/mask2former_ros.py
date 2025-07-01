@@ -339,11 +339,7 @@ class Mask2FormerRosNode:
         # --- 5. Prepare and Publish ROS Message ---
         try:
 
-            semantic_map = (panoptic_map // self.panoptic_id_multiplier)
-
-            color_image = self.color_map[semantic_map]
-
-            panoptic_label_msg = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
+            panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="32SC1")
             panoptic_label_msg.header = color_msg.header # Use same timestamp and frame
             
             empty_masks_msg = Masks()
@@ -356,10 +352,17 @@ class Mask2FormerRosNode:
                 panoptic_label_msg,
                 empty_masks_msg
             )
+
+            semantic_map = (panoptic_map // self.panoptic_id_multiplier)
+
+            color_image = self.color_map[semantic_map]
+
+            semantic_label_debug_image = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
+            semantic_label_debug_image.header = color_msg.header # Use same timestamp and frame
             
             self.cam_info_pub.publish(cam_info_msg_pub)
             self.vision_packet_pub.publish(vision_packet_msg)
-            self.panoptic_label_pub.publish(panoptic_label_msg)
+            self.panoptic_label_pub.publish(semantic_label_debug_image)
             
             self.map_view_cnt += 1
             
