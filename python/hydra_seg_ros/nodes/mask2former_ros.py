@@ -7,6 +7,12 @@ import cv2
 from scipy.special import softmax
 from scipy.ndimage import label
 from functools import reduce
+import yaml
+
+try:
+    from yaml import CLoader as Loader
+except ImportError:
+    from yaml import Loader
 
 import onnxruntime as ort
 
@@ -186,6 +192,13 @@ class Mask2FormerRosNode:
             "~custom_op_path", "models/mask2former/libmmdeploy_onnxruntime_ops.so"
         )
         self.conf_threshold = rospy.get_param("~conf_threshold", 0.5)
+        self.label_space_file = rospy.get_param(
+            "~label_space_file",
+            "/home/ros/hydra_ws/src/hydra_stretch/config/label_spaces/coco_kitchen_large_objects_label_space.yaml",
+        )
+        with open(str(self.label_space_file), "r") as f:
+            self.label_space = yaml.load(f, Loader=Loader)["object_labels"]
+
         self.panoptic_id_multiplier = 1000 
 
         self.thing_class_threshold = rospy.get_param("~thing_class_threshold", 80) 
@@ -243,10 +256,13 @@ class Mask2FormerRosNode:
         confident_detections = scores > self.conf_threshold
         if not np.any(confident_detections):
             return np.zeros(original_image_shape, dtype=np.int32)
+        
+        allowed_class_detections = np.isin(semantic_ids, self.label_space)
+        final_detections_mask = confident_detections & allowed_class_detections
 
-        scores = scores[confident_detections]
-        semantic_ids = semantic_ids[confident_detections]
-        mask_logits = mask_logits[confident_detections]
+        scores = scores[final_detections_mask]
+        semantic_ids = semantic_ids[final_detections_mask]
+        mask_logits = mask_logits[final_detections_mask]
 
         full_res_masks = np.zeros((len(scores), original_image_shape[0], original_image_shape[1]), dtype=bool)
         for i in range(len(scores)):
