@@ -240,7 +240,7 @@ class Mask2FormerRosNode:
                 # Use the existing utility to convert the numpy mask to a ROS message
                 # We use the full panoptic_id as the mask_id to ensure it's unique
                 m_msg: Mask = ros_utils.form_mask_msg(
-                    mask_id=panoptic_id,
+                    mask_id=self.mask_id_cnt ,
                     class_id=semantic_id,
                     mask=torch.from_numpy(instance_mask_np), # Convert numpy array to tensor
                     bridge=self.bridge,
@@ -248,6 +248,7 @@ class Mask2FormerRosNode:
                     width=original_shape[1]
                 )
                 masks_msg.masks.append(m_msg)
+                self.mask_id_cnt += 1
 
             panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="32SC1")
             panoptic_label_msg.header = color_msg.header # Use same timestamp and frame
