@@ -1,5 +1,6 @@
 import message_filters
 import rospy
+import torch
 from cv_bridge import CvBridge, CvBridgeError
 from pathlib import Path
 import numpy as np
@@ -18,7 +19,7 @@ import onnxruntime as ort
 
 # ROS Message Imports
 from sensor_msgs.msg import Image, CameraInfo
-from hydra_msgs.msg import HydraVisionPacket, Masks 
+from hydra_msgs.msg import HydraVisionPacket, Mask, Masks 
 
 # Utility Imports
 from hydra_seg_ros.utils import ros_utils
@@ -216,32 +217,59 @@ class Mask2FormerRosNode:
         
         # --- 5. Prepare and Publish ROS Message ---
         try:
+            
+            unique_ids = np.unique(panoptic_map)
+
+        # 2. Initialize an empty Masks message
+            masks_msg = Masks()
+            masks_msg.masks = []
+
+            # 3. Loop through each unique ID to create a separate mask
+            for panoptic_id in unique_ids:
+                # Skip the background label
+                if panoptic_id == 0:
+                    continue
+                
+                # Decode the semantic ID from the panoptic ID
+                semantic_id = (panoptic_id // self.panoptic_id_multiplier) - 1
+
+                # Create a binary mask for the current instance
+                # This creates a new 2D array where only the pixels for this instance are True
+                instance_mask_np = (panoptic_map == panoptic_id)
+
+                # Use the existing utility to convert the numpy mask to a ROS message
+                # We use the full panoptic_id as the mask_id to ensure it's unique
+                m_msg: Mask = ros_utils.form_mask_msg(
+                    mask_id=panoptic_id,
+                    class_id=semantic_id,
+                    mask=torch.from_numpy(instance_mask_np), # Convert numpy array to tensor
+                    bridge=self.bridge,
+                    height=original_shape[0],
+                    width=original_shape[1]
+                )
+                masks_msg.masks.append(m_msg)
 
             panoptic_label_msg = self.bridge.cv2_to_imgmsg(panoptic_map, encoding="32SC1")
             panoptic_label_msg.header = color_msg.header # Use same timestamp and frame
-            
-            empty_masks_msg = Masks()
-            
+
+
             cam_info_msg_pub, vision_packet_msg = ros_utils.pack_vision_msgs(
                 self.map_view_cnt, 
                 cam_info_msg, 
                 color_msg, 
                 depth_msg, 
                 panoptic_label_msg,
-                empty_masks_msg
+                masks_msg
             )
-
             semantic_map = (panoptic_map // self.panoptic_id_multiplier)
-
             color_image = self.color_map[semantic_map]
-
             semantic_label_debug_image = self.bridge.cv2_to_imgmsg(color_image, encoding="bgr8")
             semantic_label_debug_image.header = color_msg.header # Use same timestamp and frame
-            
+
             self.cam_info_pub.publish(cam_info_msg_pub)
             self.vision_packet_pub.publish(vision_packet_msg)
             self.panoptic_label_pub.publish(semantic_label_debug_image)
-            
+
             self.map_view_cnt += 1
             
         except CvBridgeError as e:
