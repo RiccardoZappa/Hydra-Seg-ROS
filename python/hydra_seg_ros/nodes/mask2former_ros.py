@@ -97,6 +97,7 @@ class Mask2FormerRosNode:
 
         # Counters
         self.map_view_cnt: int = 0
+        self.mask_id_cnt: int = 0
         
         # --- SYNCHRONIZER AND BRIDGE  ---
         self.synchronizer = message_filters.ApproximateTimeSynchronizer(
