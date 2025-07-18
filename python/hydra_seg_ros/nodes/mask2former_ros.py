@@ -233,7 +233,9 @@ class Mask2FormerRosNode:
                 
                 # Decode the semantic ID from the panoptic ID
                 semantic_id = (panoptic_id // self.panoptic_id_multiplier) - 1
-
+                
+                if semantic_id >= self.thing_class_threshold:
+                    continue
                 # Create a binary mask for the current instance
                 # This creates a new 2D array where only the pixels for this instance are True
                 instance_mask_np = (panoptic_map == panoptic_id)
